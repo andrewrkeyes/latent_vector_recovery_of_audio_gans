@@ -4,15 +4,15 @@ from models.residual_block import make_basic_block_layer, make_bottleneck_layer
 
 
 class ResNetTypeI(tf.keras.Model):
-    def __init__(self, layer_params):
+    def __init__(self, num_classes=100, layer_params=[2,2,2,2]):
         super(ResNetTypeI, self).__init__()
 
         self.conv1 = tf.keras.layers.Conv2D(filters=64,
-                                            kernel_size=(7, 7),
+                                            kernel_size=(7,7),
                                             strides=2,
                                             padding="same")
         self.bn1 = tf.keras.layers.BatchNormalization()
-        self.pool1 = tf.keras.layers.MaxPool2D(pool_size=(3, 3),
+        self.pool1 = tf.keras.layers.MaxPool2D(pool_size=(3,3),
                                                strides=2,
                                                padding="same")
 
@@ -29,7 +29,7 @@ class ResNetTypeI(tf.keras.Model):
                                              stride=2)
 
         self.avgpool = tf.keras.layers.GlobalAveragePooling2D()
-        self.fc = tf.keras.layers.Dense(units=100, activation=None)
+        self.fc = tf.keras.layers.Dense(units=num_classes, activation=None)
 
     def call(self, inputs, training=None, mask=None):
         x = self.conv1(inputs)
@@ -88,8 +88,8 @@ class ResNetTypeII(tf.keras.Model):
         return output
 
 
-def resnet_18():
-    return ResNetTypeI(layer_params=[2, 2, 2, 2])
+def resnet_18(num_classes=100):
+    return ResNetTypeI(num_classes=num_classes, layer_params=[2, 2, 2, 2])
 
 
 def resnet_34():
