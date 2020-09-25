@@ -1,3 +1,7 @@
+
+
+
+
 import numpy as np
 import PIL.Image
 import time as time
@@ -19,7 +23,7 @@ dataset = 'digits' # one of 'digits', 'speech', 'birds', 'drums', 'piano'
 
 # Confirm GPU is running
 
-writer = SummaryWriter("./logs/sc09_classifier")
+writer = SummaryWriter("./logs/deepfake")
 
 def get_available_gpus():
     local_device_protos = device_lib.list_local_devices()
@@ -29,24 +33,17 @@ if len(get_available_gpus()) == 0:
     print('WARNING: Not running on a GPU! See above for faster generation')
 
 
+classifier = resnet.resnet_18(num_classes=100, activation=None)
+classifier.load_weights("inverse_mapping_model_checkpoint/combined_loss_model.ckpt")
 
-string_to_label = {
-  "Zero": 0,
-  "One": 1,
-  "Two": 2,
-  "Three": 3,
-  "Four": 4,
-  "Five": 5,
-  "Six": 6,
-  "Seven": 7,
-  "Eight": 8,
-  "Nine": 9
-}
+for l in classifier.layers:
+    l.trainable = False
 
+classifier = tf.keras.Sequential([
+    classifier,
+    tf.keras.layers.Dense(2)
+])
 
-#inverse_mapping_model = tf.keras.applications.ResNet50(classes=100, weights=None, input_shape=(256, 256, 3))
-classifier = resnet.resnet_18(num_classes=10, activation=tf.keras.activations.softmax)
-#inverse_mapping_model.load_weights("inverse_mapping_model_checkpoint/inverse_mapping_weights_1d_mse.ckpt")
 
 loss_object = tf.keras.losses.CategoricalCrossentropy()
 optimizer = tf.keras.optimizers.Adam()
@@ -77,7 +74,7 @@ def train_step(audio, labels):
   with tf.GradientTape() as tape:
     # training=True is only needed if there are layers with different
     # behavior during training versus inference (e.g. Dropout).
-    predictions = classifier(audio, training=True)
+    predictions = tf.keras.activations.softmax(classifier(audio, training=True))
     loss = loss_object(labels, predictions)
   gradients = tape.gradient(loss, classifier.trainable_variables)
   optimizer.apply_gradients(zip(gradients, classifier.trainable_variables))
@@ -104,66 +101,54 @@ def test_step(audio, labels):
 
   # training=False is only needed if there are layers with different
   # behavior during training versus inference (e.g. Dropout).
-  predictions = classifier(audio, training=False)
+  predictions = tf.keras.activations.softmax(classifier(audio, training=False))
   t_loss = loss_object(labels, predictions)
 
   test_loss(t_loss)
   test_acc(tf.argmax(predictions,1), tf.argmax(labels,1))
 
-@tf.function
-def sample_step(audio):
-  
-  audio = tf.signal.stft(audio, 256, 128, pad_end=True)
-  audio = tf.expand_dims(audio, -1)
-
-
-  audio = tf.stack([
-    audio,
-    audio,
-    audio
-  ], axis=-1)
-  
-
-  audio = tf.squeeze(audio)
-  audio = tf.cast(audio, tf.float32)
-
-  # training=False is only needed if there are layers with different
-  # behavior during training versus inference (e.g. Dropout).
-  predictions = classifier(audio, training=False)
-  return predictions
-
 
 batch_size = 64
-train_files = glob.glob("sc09/train/*")
+train_files = glob.glob("datasets/*/train/*")
 random.shuffle(train_files)
 def train_generator():
   for x in range(0, len(train_files)):
     path = train_files[x]
     path_label = path.split("/")[-1].split("_")[0]
-    label = np.zeros(10)
-    label[string_to_label[path_label]] = 1
+    label = np.zeros(2)
+    if "sc09" in path:
+        label[0] = 1
+    else:
+        label[1] = 1
+
     sr, audio = scipy.io.wavfile.read(path)
-    audio = audio.astype(np.float32)
-    audio = audio / 32767
-    audio = audio * 1.414
-    audio = librosa.core.resample(audio, 16000, 16384)
+    if "sc09" in path:
+        audio = audio.astype(np.float32)
+        audio = audio / 32767
+        audio = audio * 1.414
+        audio = librosa.core.resample(audio, 16000, 16384)
     data = np.zeros(16384)
     data[0:audio.shape[0]] = audio
 
     yield label, data
 
-valid_files = glob.glob("sc09/valid/*")
+valid_files = glob.glob("datasets/*/valid/*")
 def valid_generator():
   for x in range(0, len(train_files)):
     path = train_files[x]
     path_label = path.split("/")[-1].split("_")[0]
-    label = np.zeros(10)
-    label[string_to_label[path_label]] = 1
+    label = np.zeros(2)
+    if "sc09" in path:
+        label[0] = 1
+    else:
+        label[1] = 1
+
     sr, audio = scipy.io.wavfile.read(path)
-    audio = audio.astype(np.float32)
-    audio = audio / 32767
-    audio = audio * 1.414
-    audio = librosa.core.resample(audio, 16000, 16384)
+    if "sc09" in path:
+        audio = audio.astype(np.float32)
+        audio = audio / 32767
+        audio = audio * 1.414
+        audio = librosa.core.resample(audio, 16000, 16384)
     data = np.zeros(16384)
     data[0:audio.shape[0]] = audio
 
@@ -197,11 +182,7 @@ for epoch in range(starting_epoch, 100):
   writer.add_scalar("test_acc", test_acc.result().numpy(), epoch)
   if(test_acc.result().numpy() > best_val):
     best_val = test_acc.result().numpy()
-    classifier.save_weights("classifier_checkpoint/model.ckpt")
+    classifier.save_weights("deepfake_classifier_checkpoint/model.ckpt")
   test_loss.reset_states()
   test_acc.reset_states()
   n_iter_test += 1
-
-  
-
-
