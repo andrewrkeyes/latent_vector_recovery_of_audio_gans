@@ -71,7 +71,7 @@ wavegan = wrap_frozen_graph(
 
 
 inverse_mapping_model = resnet.resnet_18()
-#inverse_mapping_model.load_weights("inverse_mapping_model_checkpoint/inverse_mapping_weights_2d_mse.ckpt")
+inverse_mapping_model.load_weights("inverse_mapping_model_checkpoint/generated_and_real_training.ckpt")
 classifier = resnet.resnet_18(num_classes=10,activation=tf.keras.activations.softmax)
 for l in classifier.layers:
     l.trainable = False
@@ -102,7 +102,7 @@ def train_generator():
     yield 0, data
 
 
-valid_files = glob.glob("sc09/valid/*")
+valid_files = glob.glob("datasets/sc09/valid/*")
 def valid_generator():
   for x in range(0, len(train_files)):
     path = train_files[x]
@@ -296,8 +296,9 @@ except:
   starting_epoch = 0
 '''
 n_iter = 0
-starting_epoch = 0
-for epoch in range(starting_epoch, 100):
+starting_epoch = 100
+n_iter = starting_epoch * (len(train_files) // batch_size)
+for epoch in range(starting_epoch, 250):
   train_loss.reset_states()
   train_z_loss.reset_states()
   train_percep_loss.reset_states()

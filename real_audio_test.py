@@ -84,7 +84,7 @@ def load_real_audio(path):
     sr, data = scipy.io.wavfile.read(path)
     return data
 
-real_audio_path = "wavenet_one_padded.wav"
+real_audio_path = "real_audio_cut.wav"
 batch = np.zeros((1, 16384))
 batch[0] = load_real_audio(real_audio_path)
 print(batch.shape)
@@ -94,7 +94,7 @@ _G_z = wavegan(predictions)
 
 inversed_mapped_generated_sound = _G_z
 
-scipy.io.wavfile.write("real_audio_waves/wavenet_inverse_second_attempt.wav", 16384, inversed_mapped_generated_sound.numpy()[0])
+scipy.io.wavfile.write("real_audio_waves/wavenet_inverse_250_attempt.wav", 16384, inversed_mapped_generated_sound.numpy()[0])
 
 
 #inverse_mapping_model.save_weights("inverse_mapping_model_checkpoint/inverse_mapping_weights_2d_mse.ckpt")
