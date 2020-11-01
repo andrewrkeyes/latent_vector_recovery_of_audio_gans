@@ -13,8 +13,6 @@ import librosa
 from models import resnet
 from tensorboardX import SummaryWriter
 
-# CHANGE THIS to use a different dataset
-dataset = 'digits' # one of 'digits', 'speech', 'birds', 'drums', 'piano'
 
 # Confirm GPU is running
 
@@ -28,7 +26,7 @@ if len(get_available_gpus()) == 0:
     print('WARNING: Not running on a GPU! See above for faster generation')
 
 
-'''
+
 with tf.Graph().as_default():
   #tf.compat.v1.reset_default_graph()
   saver = tf.compat.v1.train.import_meta_graph('checkpoint/infer.meta')
@@ -36,19 +34,19 @@ with tf.Graph().as_default():
   input_graph_def = graph.as_graph_def()
   sess = tf.compat.v1.Session()
   saver.restore(sess, 'checkpoint/model.ckpt')
- 
+
   output_node_names="G_z"
   output_graph_def = tf.compat.v1.graph_util.convert_variables_to_constants(
               sess, # The session
-              input_graph_def, # input_graph_def is useful for retrieving the nodes 
-              output_node_names.split(",")  
+              input_graph_def, # input_graph_def is useful for retrieving the nodes
+              output_node_names.split(",")
   )
   output_graph="checkpoint_frozen/saved_model.pb"
   with tf.compat.v1.gfile.GFile(output_graph, "wb") as f:
     f.write(output_graph_def.SerializeToString())
- 
+
   sess.close()
-'''
+
 
 def wrap_frozen_graph(graph_def, inputs, outputs):
   def _imports_graph_def():
@@ -71,7 +69,7 @@ wavegan = wrap_frozen_graph(
 
 
 inverse_mapping_model = resnet.resnet_18()
-inverse_mapping_model.load_weights("inverse_mapping_model_checkpoint/generated_and_real_training.ckpt")
+#inverse_mapping_model.load_weights("inverse_mapping_model_checkpoint/generated_and_real_training.ckpt")
 classifier = resnet.resnet_18(num_classes=10,activation=tf.keras.activations.softmax)
 for l in classifier.layers:
     l.trainable = False
@@ -105,7 +103,7 @@ def train_generator():
 valid_files = glob.glob("datasets/sc09/valid/*")
 def valid_generator():
   for x in range(0, len(train_files)):
-    path = train_files[x]
+    path = valid_files[x]
     path_label = path.split("/")[-1].split("_")[0]
 
     sr, audio = scipy.io.wavfile.read(path)
@@ -137,7 +135,7 @@ test_loss = tf.keras.metrics.Mean(name='test_loss')
 
 def compute_perceptual_loss(original_audio_spec, inverse_audio):
   inverse_audio = tf.signal.stft(inverse_audio, 256, 128, pad_end=True)
-  
+
   inverse_audio = tf.expand_dims(inverse_audio, -1)
 
   inverse_audio = tf.stack([
@@ -171,7 +169,7 @@ def compute_perceptual_loss(original_audio_spec, inverse_audio):
 def train_step(audio, labels, compute_z_loss=True):
   audio = tf.squeeze(audio)
   audio = tf.signal.stft(audio, 256, 128, pad_end=True)
-  
+
   audio = tf.expand_dims(audio, -1)
 
   audio = tf.stack([
@@ -187,13 +185,6 @@ def train_step(audio, labels, compute_z_loss=True):
     # training=True is only needed if there are layers with different
     # behavior during training versus inference (e.g. Dropout).
     predictions = inverse_mapping_model(audio, training=True)
-    '''
-    with tf.Graph().as_default():
-      z = graph.get_tensor_by_name('z:0')
-      G_z = graph.get_tensor_by_name('G_z:0')[:, :, 0]
-      G_z_spec = graph.get_tensor_by_name('G_z_spec:0')
-      _G_z, _G_z_spec = sess.run([G_z, G_z_spec], {z: predictions.numpy()})
-    '''
     _G_z = wavegan(predictions)
     _G_z = tf.squeeze(_G_z)
 
@@ -216,7 +207,7 @@ def train_step(audio, labels, compute_z_loss=True):
     train_loss(loss)
   else:
     train_percep_loss_real(percep_loss)
-  
+
 @tf.function
 def test_step(audio, labels, compute_z_loss=True):
 
@@ -224,13 +215,13 @@ def test_step(audio, labels, compute_z_loss=True):
   audio = tf.signal.stft(audio, 256, 128, pad_end=True)
   audio = tf.expand_dims(audio, -1)
 
-  
+
   audio = tf.stack([
     audio,
     audio,
     audio
   ], axis=-1)
-  
+
 
   audio = tf.squeeze(audio)
   audio = tf.cast(audio, tf.float32)
@@ -238,13 +229,6 @@ def test_step(audio, labels, compute_z_loss=True):
   # training=False is only needed if there are layers with different
   # behavior during training versus inference (e.g. Dropout).
   predictions = inverse_mapping_model(audio, training=True)
-  '''
-  with tf.Graph().as_default():
-    z = graph.get_tensor_by_name('z:0')
-    G_z = graph.get_tensor_by_name('G_z:0')[:, :, 0]
-    G_z_spec = graph.get_tensor_by_name('G_z_spec:0')
-    _G_z, _G_z_spec = sess.run([G_z, G_z_spec], {z: predictions.numpy()})
-  '''
 
   _G_z = wavegan(predictions)
   _G_z = tf.squeeze(_G_z)
@@ -265,7 +249,7 @@ def test_step(audio, labels, compute_z_loss=True):
 
 @tf.function
 def sample_step(audio):
-  
+
   audio = tf.signal.stft(audio, 256, 128, pad_end=True)
   audio = tf.expand_dims(audio, -1)
 
@@ -275,7 +259,7 @@ def sample_step(audio):
     audio,
     audio
   ], axis=-1)
-  
+
 
   audio = tf.squeeze(audio)
   audio = tf.cast(audio, tf.float32)
@@ -289,12 +273,6 @@ def sample_step(audio):
 batch_size = 64
 test_z = (tf.random.uniform([batch_size, 100])*2.0) - 1.0
 
-'''
-try:
-  starting_epoch = np.load("inverse_mapping_model_checkpoint/epoch.npy")[0]
-except:
-  starting_epoch = 0
-'''
 n_iter = 0
 starting_epoch = 100
 n_iter = starting_epoch * (len(train_files) // batch_size)
@@ -304,20 +282,9 @@ for epoch in range(starting_epoch, 250):
   train_percep_loss.reset_states()
   train_percep_loss_real.reset_states()
 
-  '''
-  for x in tqdm(range(0, 2)):
-    n_iter = epoch*300 + x
-    with tf.Graph().as_default():
-      _z = (np.random.rand(batch_size, 100) * 2.) - 1.
-      z = graph.get_tensor_by_name('z:0')
-      G_z = graph.get_tensor_by_name('G_z:0')[:, :, 0]
-      G_z_spec = graph.get_tensor_by_name('G_z_spec:0')
-      _G_z, _G_z_spec = sess.run([G_z, G_z_spec], {z: _z})
-   #_z = (np.random.rand(batch_size, 100) * 2.) - 1.0
-  '''
-  
+
   dataset = tf.data.Dataset.from_generator(train_generator, output_types=(tf.int64, tf.float32)).shuffle(500).batch(batch_size)
-  
+
   for label, audio in dataset:
     train_step(audio, None, compute_z_loss=False)
     writer.add_scalar("train_percep_loss_real", train_percep_loss_real.result().numpy(), n_iter)
@@ -326,7 +293,7 @@ for epoch in range(starting_epoch, 250):
 
     _z = (tf.random.uniform([batch_size, 100])*2.0) - 1.0
     _G_z = wavegan(_z)
-    
+
 
     train_step(_G_z, _z, compute_z_loss=True)
     writer.add_scalar("train_combined_loss", train_loss.result().numpy(), n_iter)
@@ -337,21 +304,13 @@ for epoch in range(starting_epoch, 250):
     train_z_loss.reset_states()
     train_percep_loss.reset_states()
     n_iter += 1
-    
 
-  
+
   test_loss.reset_states()
   for x in tqdm(range(0, 1)):
-    '''
-    with tf.Graph().as_default():
-      z = graph.get_tensor_by_name('z:0')
-      G_z = graph.get_tensor_by_name('G_z:0')[:, :, 0]
-      G_z_spec = graph.get_tensor_by_name('G_z_spec:0')
-      _G_z, _G_z_spec = sess.run([G_z, G_z_spec], {z: test_z})
-    '''
     _G_z = wavegan(test_z)
-    
-    
+
+
     test_step(_G_z, test_z)
     writer.add_scalar("test_combined_loss", test_loss.result().numpy(), epoch)
     writer.add_scalar("test_z_loss", test_z_loss.result().numpy(), epoch)
@@ -370,53 +329,23 @@ for epoch in range(starting_epoch, 250):
   num_samples = 2
   sample_z = (tf.random.uniform([num_samples, 100])*2.0) - 1.0
 
-  '''
-  with tf.Graph().as_default():
-      z = graph.get_tensor_by_name('z:0')
-      G_z = graph.get_tensor_by_name('G_z:0')[:, :, 0]
-      G_z_spec = graph.get_tensor_by_name('G_z_spec:0')
-      _G_z, _G_z_spec = sess.run([G_z, G_z_spec], {z: sample_z})
-  '''
   _G_z = wavegan(sample_z)
   _G_z = tf.squeeze(_G_z)
   original_generated_sound = _G_z
 
   predictions = sample_step(_G_z)
-  '''
-  with tf.Graph().as_default():
-      z = graph.get_tensor_by_name('z:0')
-      G_z = graph.get_tensor_by_name('G_z:0')[:, :, 0]
-      G_z_spec = graph.get_tensor_by_name('G_z_spec:0')
-      _G_z, _G_z_spec = sess.run([G_z, G_z_spec], {z: predictions.numpy()})
-  '''
   _G_z = wavegan(predictions)
   _G_z = tf.squeeze(_G_z)
-    
+
   inversed_mapped_generated_sound = _G_z
 
   for x in range(0, num_samples):
     scipy.io.wavfile.write("waves/original_"+str(epoch)+"sample_"+str(x)+".wav", 16384, original_generated_sound.numpy()[x])
     scipy.io.wavfile.write("waves/inverse_mapping_"+str(epoch)+"sample_"+str(x)+".wav", 16384, inversed_mapped_generated_sound.numpy()[x])
-  
+
 
   inverse_mapping_model.save_weights("inverse_mapping_model_checkpoint/generated_and_real_training.ckpt")
   np.save("inverse_mapping_model_checkpoint/epoch.npy", np.zeros(1)*epoch)
 
 
-
-
-'''
-# Sample latent vectors
-_z = (np.random.rand(ngenerate, 100) * 2.) - 1.
-
-# Generate
-z = graph.get_tensor_by_name('z:0')
-G_z = graph.get_tensor_by_name('G_z:0')[:, :, 0]
-G_z_spec = graph.get_tensor_by_name('G_z_spec:0')
-
-start = time.time()
-_G_z, _G_z_spec = sess.run([G_z, G_z_spec], {z: _z})
-print('Finished! (Took {} seconds)'.format(time.time() - start))
-
-'''
 
