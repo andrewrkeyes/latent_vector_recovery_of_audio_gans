@@ -1,3 +1,3 @@
-# latent_vector_recovery_of_audio_gans
+# Latent Vector Recovery of Audio GANs
 
 See README.pdf for full description.
